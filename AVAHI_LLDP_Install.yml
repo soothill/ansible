@@ -1,0 +1,27 @@
+---
+- name: Install and configure LLDP and AVAHI
+  hosts: "{{ target_host | default('all') }}"
+  become: yes
+  
+  tasks:
+    - name: Install LLDP daemon
+      package:
+        name: lldpd
+        state: present
+      
+    - name: Install AVAHI daemon
+      package:
+        name: avahi-daemon
+        state: present
+    
+    - name: Ensure LLDP service is started and enabled
+      service:
+        name: lldpd
+        state: started
+        enabled: yes
+    
+    - name: Ensure AVAHI service is started and enabled
+      service:
+        name: avahi-daemon
+        state: started
+        enabled: yes

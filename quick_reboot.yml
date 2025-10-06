@@ -1,0 +1,7 @@
+---
+- name: Quick reboot
+  hosts: "{{ target_node }}"
+  become: yes
+  tasks:
+    - name: Reboot now
+      ansible.builtin.reboot:

@@ -1,0 +1,121 @@
+#
+# Tailscale Installation Ansible Playbook
+# Copyright (c) 2025 Darren Soothill
+# 
+# This playbook automates the installation and configuration of Tailscale
+# on Debian/Ubuntu and RHEL/CentOS/Fedora systems.
+#
+# Author: Darren Soothill
+# Created: October 2025
+#
+# Usage Examples:
+#
+#   Run on all hosts (manual authentication required):
+#     ansible-playbook tailscale.yml -i inventory
+#
+#   Run on a specific host:
+#     ansible-playbook tailscale.yml -i inventory -e "target_hosts=webserver1"
+#
+#   Run on a group of hosts:
+#     ansible-playbook tailscale.yml -i inventory -e "target_hosts=webservers"
+#
+#   Run with authentication key:
+#     ansible-playbook tailscale.yml -i inventory -e "tailscale_auth_key=tskey-auth-xxxxx"
+#
+#   Run on specific host with auth key:
+#     ansible-playbook tailscale.yml -i inventory \
+#       -e "target_hosts=webserver1" \
+#       -e "tailscale_auth_key=tskey-auth-xxxxx"
+#
+#   Run with additional Tailscale arguments:
+#     ansible-playbook tailscale.yml -i inventory \
+#       -e "tailscale_auth_key=tskey-auth-xxxxx" \
+#       -e "tailscale_args=--advertise-routes=10.0.0.0/24"
+#
+#   Run with encrypted vault file:
+#     ansible-playbook tailscale.yml -i inventory \
+#       -e @secrets.yml --ask-vault-pass
+#
+# Variables:
+#   target_hosts       - Host or group to target (default: all)
+#   tailscale_auth_key - Tailscale authentication key (optional)
+#   tailscale_args     - Additional arguments for 'tailscale up' (optional)
+#
+
+---
+- name: Install and Configure Tailscale
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  vars:
+    tailscale_auth_key: ""  # Optional: Set your auth key here or pass via -e
+    tailscale_args: ""      # Optional: Additional tailscale up arguments
+  
+  tasks:
+    - name: Install prerequisites for Debian/Ubuntu
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Add Tailscale GPG key (Debian/Ubuntu)
+      apt_key:
+        url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Tailscale repository (Debian/Ubuntu)
+      apt_repository:
+        repo: "deb https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main"
+        state: present
+        filename: tailscale
+      when: ansible_os_family == "Debian"
+
+    - name: Install Tailscale (Debian/Ubuntu)
+      apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Add Tailscale repository (RHEL/CentOS/Fedora)
+      yum_repository:
+        name: tailscale-stable
+        description: Tailscale stable
+        baseurl: https://pkgs.tailscale.com/stable/rhel/$releasever/$basearch
+        gpgkey: https://pkgs.tailscale.com/stable/rhel/$releasever/repo.gpg
+        gpgcheck: yes
+        enabled: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Tailscale (RHEL/CentOS/Fedora)
+      package:
+        name: tailscale
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Enable and start Tailscale service
+      systemd:
+        name: tailscaled
+        enabled: yes
+        state: started
+
+    - name: Connect to Tailscale network (with auth key)
+      command: "tailscale up --authkey={{ tailscale_auth_key }} {{ tailscale_args }}"
+      when: tailscale_auth_key != ""
+      register: tailscale_up
+      changed_when: "'Success' in tailscale_up.stderr or tailscale_up.rc == 0"
+
+    - name: Display Tailscale status
+      command: tailscale status
+      register: tailscale_status
+      changed_when: false
+
+    - name: Show Tailscale status
+      debug:
+        var: tailscale_status.stdout_lines
+      

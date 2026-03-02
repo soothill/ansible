@@ -12,8 +12,8 @@
 #   ./deploy_ubuntu_vm.sh --help
 #
 # Environment variables (all optional – override any default without prompting):
-#   NEW_HOSTNAME, PROXMOX_HOST, PROXMOX_NODE, PROXMOX_API_USER,
-#   PROXMOX_API_PASSWORD, TEMPLATE_VMID, VM_CORES, VM_MEMORY,
+#   NEW_HOSTNAME, PROXMOX_HOST, PROXMOX_SSH_USER, PROXMOX_NODE,
+#   PROXMOX_API_USER, TEMPLATE_VMID, VM_CORES, VM_MEMORY,
 #   VM_DISK_SIZE, VM_STORAGE, VM_NETWORK_BRIDGE, GITHUB_USER, DEPLOY_USER
 #
 
@@ -39,7 +39,7 @@ error()   { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
 die()     { error "$*"; exit 1; }
 banner()  { echo -e "\n${BOLD}${CYAN}=== $* ===${RESET}\n"; }
 
-# Read a value interactively, using $2 as the default.
+# Read a value interactively, using $3 as the default.
 # Usage: prompt_var VAR_NAME "Description" "default_value" [secret]
 prompt_var() {
     local var_name="$1"
@@ -48,7 +48,6 @@ prompt_var() {
     local secret="${4:-}"
 
     if [[ "$NON_INTERACTIVE" == "true" ]]; then
-        # In non-interactive mode just use current value or default
         [[ -z "${!var_name:-}" ]] && printf -v "$var_name" '%s' "$default_val"
         return
     fi
@@ -62,9 +61,8 @@ prompt_var() {
 
     local input
     if [[ "$secret" == "secret" ]]; then
-        # Hide input for passwords
         read -r -s -p "$(echo -e "$prompt_str")" input
-        echo   # newline after hidden input
+        echo
     else
         read -r -p "$(echo -e "$prompt_str")" input
     fi
@@ -89,26 +87,32 @@ OPTIONS
   --help              Show this help and exit
 
 ENVIRONMENT VARIABLES (all optional)
-  NEW_HOSTNAME          Hostname for the new VM
-  PROXMOX_HOST          Proxmox host address       (default: proxmox.local)
-  PROXMOX_NODE          Proxmox node name          (default: proxmox)
-  PROXMOX_API_USER      Proxmox API user           (default: root@pam)
-  PROXMOX_API_PASSWORD  Proxmox API password       (required, no default)
-  TEMPLATE_VMID         Source cloud-init VMID     (default: 9000)
-  VM_CORES              vCPU cores                 (default: 2)
-  VM_MEMORY             RAM in MB                  (default: 2048)
-  VM_DISK_SIZE          Disk size                  (default: 20G)
-  VM_STORAGE            Proxmox storage pool       (default: local-lvm)
-  VM_NETWORK_BRIDGE     Network bridge             (default: vmbr0)
-  GITHUB_USER           GitHub user for SSH keys   (default: soothill)
-  DEPLOY_USER           Linux user to create       (default: darren)
+  NEW_HOSTNAME        Hostname for the new VM
+  PROXMOX_HOST        Proxmox host address           (default: proxmox.local)
+  PROXMOX_SSH_USER    SSH user for the Proxmox host  (default: root)
+  PROXMOX_NODE        Proxmox node name              (default: proxmox)
+  PROXMOX_API_USER    Proxmox API user               (default: root@pam)
+  TEMPLATE_VMID       Source cloud-init VMID         (default: 9000)
+  VM_CORES            vCPU cores                     (default: 2)
+  VM_MEMORY           RAM in MB                      (default: 2048)
+  VM_DISK_SIZE        Disk size                      (default: 20G)
+  VM_STORAGE          Proxmox storage pool           (default: local-lvm)
+  VM_NETWORK_BRIDGE   Network bridge                 (default: vmbr0)
+  GITHUB_USER         GitHub user for SSH keys       (default: soothill)
+  DEPLOY_USER         Linux user to create on VM     (default: darren)
+
+NOTES
+  If key-based (passwordless) SSH is configured for the Proxmox host the
+  script detects this automatically and skips the SSH password prompt.
+  If not, you will be asked whether to proceed with password authentication,
+  in which case Ansible will prompt for the password at runtime.
 
 EXAMPLES
   # Fully interactive
   ./deploy_ubuntu_vm.sh
 
-  # Supply mandatory values, use defaults for everything else
-  NEW_HOSTNAME=webserver PROXMOX_API_PASSWORD=secret ./deploy_ubuntu_vm.sh --non-interactive
+  # Supply the hostname, use defaults + key auth for everything else
+  NEW_HOSTNAME=webserver ./deploy_ubuntu_vm.sh --non-interactive
 
   # Dry-run to review the command before running
   ./deploy_ubuntu_vm.sh --dry-run
@@ -135,11 +139,11 @@ done
 # ---------------------------------------------------------------------------
 banner "Checking dependencies"
 
-for cmd in ansible-playbook ansible-galaxy; do
+for cmd in ansible-playbook ansible-galaxy ssh curl; do
     if command -v "$cmd" &>/dev/null; then
         success "$cmd found ($(command -v "$cmd"))"
     else
-        die "$cmd not found – please install Ansible first"
+        die "$cmd not found – please install it before continuing"
     fi
 done
 
@@ -163,32 +167,30 @@ fi
 banner "VM Configuration"
 
 # --- Required ---
-prompt_var NEW_HOSTNAME        "New VM hostname (required)"        "${NEW_HOSTNAME:-}"
+prompt_var NEW_HOSTNAME "New VM hostname (required)" "${NEW_HOSTNAME:-}"
 [[ -n "${NEW_HOSTNAME:-}" ]] || die "new_hostname is required"
-
-prompt_var PROXMOX_API_PASSWORD "Proxmox API password (required)"  "${PROXMOX_API_PASSWORD:-}" secret
-[[ -n "${PROXMOX_API_PASSWORD:-}" ]] || die "proxmox_api_password is required"
 
 echo
 info "Leave any field blank to accept the value shown in [brackets]"
 echo
 
 # --- Proxmox connection ---
-prompt_var PROXMOX_HOST        "Proxmox host address"             "${PROXMOX_HOST:-proxmox.local}"
-prompt_var PROXMOX_NODE        "Proxmox node name"                "${PROXMOX_NODE:-proxmox}"
-prompt_var PROXMOX_API_USER    "Proxmox API user"                 "${PROXMOX_API_USER:-root@pam}"
+prompt_var PROXMOX_HOST     "Proxmox host address"    "${PROXMOX_HOST:-proxmox.local}"
+prompt_var PROXMOX_SSH_USER "Proxmox SSH user"        "${PROXMOX_SSH_USER:-root}"
+prompt_var PROXMOX_NODE     "Proxmox node name"       "${PROXMOX_NODE:-proxmox}"
+prompt_var PROXMOX_API_USER "Proxmox API user"        "${PROXMOX_API_USER:-root@pam}"
 
 # --- Template & hardware ---
-prompt_var TEMPLATE_VMID       "Ubuntu cloud-init template VMID"  "${TEMPLATE_VMID:-9000}"
-prompt_var VM_CORES            "vCPU cores"                       "${VM_CORES:-2}"
-prompt_var VM_MEMORY           "RAM (MB)"                         "${VM_MEMORY:-2048}"
-prompt_var VM_DISK_SIZE        "Disk size (e.g. 20G, 50G)"        "${VM_DISK_SIZE:-20G}"
-prompt_var VM_STORAGE          "Proxmox storage pool"             "${VM_STORAGE:-local-lvm}"
-prompt_var VM_NETWORK_BRIDGE   "Network bridge"                   "${VM_NETWORK_BRIDGE:-vmbr0}"
+prompt_var TEMPLATE_VMID     "Ubuntu cloud-init template VMID" "${TEMPLATE_VMID:-9000}"
+prompt_var VM_CORES          "vCPU cores"                      "${VM_CORES:-2}"
+prompt_var VM_MEMORY         "RAM (MB)"                        "${VM_MEMORY:-2048}"
+prompt_var VM_DISK_SIZE      "Disk size (e.g. 20G, 50G)"       "${VM_DISK_SIZE:-20G}"
+prompt_var VM_STORAGE        "Proxmox storage pool"            "${VM_STORAGE:-local-lvm}"
+prompt_var VM_NETWORK_BRIDGE "Network bridge"                  "${VM_NETWORK_BRIDGE:-vmbr0}"
 
 # --- Guest OS ---
-prompt_var GITHUB_USER         "GitHub user for SSH keys"         "${GITHUB_USER:-soothill}"
-prompt_var DEPLOY_USER         "Linux user to create on VM"       "${DEPLOY_USER:-darren}"
+prompt_var GITHUB_USER  "GitHub user for SSH keys"    "${GITHUB_USER:-soothill}"
+prompt_var DEPLOY_USER  "Linux user to create on VM"  "${DEPLOY_USER:-darren}"
 
 # ---------------------------------------------------------------------------
 # Validate inputs
@@ -202,14 +204,14 @@ validate_disk() {
     [[ "$2" =~ ^[0-9]+[GMTP]$ ]] || die "$1 must be like 20G, 100G, 1T (got: $2)"
 }
 
-validate_int "vm_cores"    "$VM_CORES"
-validate_int "vm_memory"   "$VM_MEMORY"
-validate_int "template_vmid" "$TEMPLATE_VMID"
-validate_disk "vm_disk_size" "$VM_DISK_SIZE"
+validate_int  "vm_cores"      "$VM_CORES"
+validate_int  "vm_memory"     "$VM_MEMORY"
+validate_int  "template_vmid" "$TEMPLATE_VMID"
+validate_disk "vm_disk_size"  "$VM_DISK_SIZE"
 
 # Validate hostname (RFC 1123)
 [[ "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]] \
-    || die "Invalid hostname '$NEW_HOSTNAME' (use only letters, digits, hyphens)"
+    || die "Invalid hostname '$NEW_HOSTNAME' (letters, digits, hyphens only)"
 
 # Check GitHub keys are reachable
 info "Checking SSH keys at https://github.com/${GITHUB_USER}.keys ..."
@@ -222,12 +224,56 @@ fi
 success "All inputs valid"
 
 # ---------------------------------------------------------------------------
+# SSH connectivity check
+# ---------------------------------------------------------------------------
+banner "Checking Proxmox SSH access"
+
+USE_ASK_PASS=false
+
+info "Testing passwordless SSH to ${PROXMOX_SSH_USER}@${PROXMOX_HOST} ..."
+if ssh -o BatchMode=yes \
+       -o ConnectTimeout=8 \
+       -o StrictHostKeyChecking=accept-new \
+       "${PROXMOX_SSH_USER}@${PROXMOX_HOST}" true 2>/dev/null; then
+    success "Passwordless SSH confirmed – no password needed"
+else
+    warn "Passwordless SSH not available for ${PROXMOX_SSH_USER}@${PROXMOX_HOST}"
+
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        # In non-interactive mode always fall back to --ask-pass
+        USE_ASK_PASS=true
+        warn "Non-interactive mode: Ansible will prompt for SSH password at runtime"
+    else
+        echo
+        echo -e "${BOLD}SSH key auth is not configured. How do you want to proceed?${RESET}"
+        echo -e "  ${YELLOW}1)${RESET} Use password authentication (Ansible will prompt at runtime)"
+        echo -e "  ${YELLOW}2)${RESET} Abort and set up SSH key auth first"
+        echo
+        read -r -p "$(echo -e "${BOLD}Choice [1/2]${RESET}: ")" ssh_choice
+        case "${ssh_choice:-1}" in
+            1) USE_ASK_PASS=true
+               info "Will use password authentication (--ask-pass)" ;;
+            *) echo
+               info "Tip: copy your key with:"
+               echo -e "  ${CYAN}ssh-copy-id ${PROXMOX_SSH_USER}@${PROXMOX_HOST}${RESET}"
+               info "Aborted."
+               exit 0 ;;
+        esac
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 banner "Deployment Summary"
 
+SSH_AUTH_LABEL="key-based (passwordless)"
+[[ "$USE_ASK_PASS" == "true" ]] && SSH_AUTH_LABEL="password (prompted at runtime)"
+
 echo -e "  ${BOLD}Hostname${RESET}          : $NEW_HOSTNAME"
 echo -e "  ${BOLD}Proxmox host${RESET}      : $PROXMOX_HOST"
+echo -e "  ${BOLD}Proxmox SSH user${RESET}  : $PROXMOX_SSH_USER"
+echo -e "  ${BOLD}SSH auth${RESET}          : $SSH_AUTH_LABEL"
 echo -e "  ${BOLD}Proxmox node${RESET}      : $PROXMOX_NODE"
 echo -e "  ${BOLD}API user${RESET}          : $PROXMOX_API_USER"
 echo -e "  ${BOLD}Template VMID${RESET}     : $TEMPLATE_VMID"
@@ -248,10 +294,10 @@ CMD=(
     ansible-playbook
     "$PLAYBOOK"
     -i "${PROXMOX_HOST},"
+    -e "ansible_user=${PROXMOX_SSH_USER}"
     -e "new_hostname=${NEW_HOSTNAME}"
     -e "proxmox_node=${PROXMOX_NODE}"
     -e "proxmox_api_user=${PROXMOX_API_USER}"
-    -e "proxmox_api_password=${PROXMOX_API_PASSWORD}"
     -e "template_vmid=${TEMPLATE_VMID}"
     -e "vm_cores=${VM_CORES}"
     -e "vm_memory=${VM_MEMORY}"
@@ -262,10 +308,11 @@ CMD=(
     -e "deploy_user=${DEPLOY_USER}"
 )
 
+[[ "$USE_ASK_PASS" == "true" ]] && CMD+=( --ask-pass )
+
 if [[ "$DRY_RUN" == "true" ]]; then
     banner "Dry Run – command that would be executed"
-    # Mask the password in dry-run output
-    echo -e "${CYAN}$(printf '%q ' "${CMD[@]}" | sed "s/${PROXMOX_API_PASSWORD}/*****/g")${RESET}"
+    echo -e "${CYAN}$(printf '%q ' "${CMD[@]}")${RESET}"
     echo
     info "Re-run without --dry-run to execute."
     exit 0

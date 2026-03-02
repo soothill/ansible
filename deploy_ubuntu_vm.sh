@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # deploy_ubuntu_vm.sh
-# Copyright (c) 2025 Darren Soothill
+# Copyright (c) 2026 Darren Soothill
 #
 # Interactive wrapper for proxmox_ubuntu_deploy.yml.
 # Prompts for every variable with sensible defaults, then runs the playbook.

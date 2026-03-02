@@ -1,6 +1,6 @@
 #
 # Proxmox Ubuntu VM Deployment Ansible Playbook
-# Copyright (c) 2025 Darren Soothill
+# Copyright (c) 2026 Darren Soothill
 #
 # Deploys a fresh Ubuntu VM on a Proxmox host using a cloud-init template,
 # creates a 'darren' user with SSH keys pulled from GitHub, installs LLDP

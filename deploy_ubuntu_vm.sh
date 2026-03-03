@@ -189,8 +189,9 @@ prompt_var VM_STORAGE        "Proxmox storage pool"            "${VM_STORAGE:-lo
 prompt_var VM_NETWORK_BRIDGE "Network bridge"                  "${VM_NETWORK_BRIDGE:-vmbr0}"
 
 # --- Guest OS ---
-prompt_var GITHUB_USER  "GitHub user for SSH keys"    "${GITHUB_USER:-soothill}"
-prompt_var DEPLOY_USER  "Linux user to create on VM"  "${DEPLOY_USER:-darren}"
+prompt_var GITHUB_USER          "GitHub user for SSH keys"            "${GITHUB_USER:-soothill}"
+prompt_var DEPLOY_USER          "Linux user to create on VM"          "${DEPLOY_USER:-darren}"
+prompt_var DEPLOY_USER_PASSWORD "Deploy user password (blank = none)" "${DEPLOY_USER_PASSWORD:-}" "secret"
 
 # ---------------------------------------------------------------------------
 # Validate inputs
@@ -284,6 +285,11 @@ echo -e "  ${BOLD}Storage pool${RESET}      : $VM_STORAGE"
 echo -e "  ${BOLD}Network bridge${RESET}    : $VM_NETWORK_BRIDGE"
 echo -e "  ${BOLD}GitHub SSH keys${RESET}   : github.com/${GITHUB_USER}"
 echo -e "  ${BOLD}Deploy user${RESET}       : $DEPLOY_USER"
+if [[ -n "${DEPLOY_USER_PASSWORD:-}" ]]; then
+    echo -e "  ${BOLD}Deploy password${RESET}   : (set)"
+else
+    echo -e "  ${BOLD}Deploy password${RESET}   : (none – key auth only)"
+fi
 echo -e "  ${BOLD}mDNS address${RESET}      : ${NEW_HOSTNAME}.local"
 echo
 
@@ -307,6 +313,16 @@ CMD=(
     -e "github_user=${GITHUB_USER}"
     -e "deploy_user=${DEPLOY_USER}"
 )
+
+# Write the password to a temp file so it isn't visible in the process list.
+SECRETS_FILE=""
+if [[ -n "${DEPLOY_USER_PASSWORD:-}" ]]; then
+    SECRETS_FILE=$(mktemp)
+    chmod 600 "$SECRETS_FILE"
+    escaped="${DEPLOY_USER_PASSWORD//\'/\'\'}"
+    printf "deploy_user_password: '%s'\n" "$escaped" > "$SECRETS_FILE"
+    CMD+=( -e "@${SECRETS_FILE}" )
+fi
 
 [[ "$USE_ASK_PASS" == "true" ]] && CMD+=( --ask-pass )
 
@@ -335,6 +351,8 @@ banner "Running Playbook"
 "${CMD[@]}"
 
 EXIT_CODE=$?
+[[ -n "${SECRETS_FILE:-}" ]] && rm -f "$SECRETS_FILE"
+
 
 echo
 if [[ $EXIT_CODE -eq 0 ]]; then

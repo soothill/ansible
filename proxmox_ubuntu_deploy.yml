@@ -55,6 +55,7 @@
     vm_network_bridge: "vmbr0"
     github_user: "soothill"
     deploy_user: "darren"
+    deploy_user_password: ""
 
   tasks:
     - name: Fetch SSH public keys from GitHub ({{ github_user }})
@@ -158,6 +159,17 @@
         --searchdomain local
         --agent enabled=1
 
+    - name: Set cloud-init password for {{ deploy_user }}
+      command:
+        argv:
+          - qm
+          - set
+          - "{{ next_vmid.stdout | trim }}"
+          - "--cipassword"
+          - "{{ deploy_user_password }}"
+      when: deploy_user_password | length > 0
+      no_log: true
+
     - name: Resize VM disk to {{ vm_disk_size }}
       command: >
         qm resize {{ next_vmid.stdout | trim }} scsi0 {{ vm_disk_size }}
@@ -173,11 +185,22 @@
       until: agent_ping.rc == 0
       changed_when: false
 
-    - name: Get VM IP address via QEMU guest agent
-      command: >
-        qm guest cmd {{ next_vmid.stdout | trim }} network-get-interfaces
+    - name: Wait for VM to acquire a DHCP address
+      command: qm guest cmd {{ next_vmid.stdout | trim }} network-get-interfaces
       register: vm_network_raw
+      retries: 30
+      delay: 5
+      until: >-
+        vm_network_raw.rc == 0 and
+        (vm_network_raw.stdout | length) > 0 and
+        (vm_network_raw.stdout | from_json
+        | selectattr('name', 'ne', 'lo')
+        | map(attribute='ip-addresses')
+        | flatten
+        | selectattr('ip-address-type', 'eq', 'ipv4')
+        | list | length) > 0
       changed_when: false
+      failed_when: false
 
     - name: Parse VM IP address
       set_fact:
@@ -221,6 +244,7 @@
   vars:
     github_user: "soothill"
     deploy_user: "darren"
+    deploy_user_password: ""
 
   tasks:
     - name: Wait for SSH to become available
@@ -314,6 +338,14 @@
         groups: sudo
         append: yes
         create_home: yes
+
+    - name: Set password for {{ deploy_user }}
+      user:
+        name: "{{ deploy_user }}"
+        password: "{{ deploy_user_password | password_hash('sha512') }}"
+        update_password: always
+      when: deploy_user_password | length > 0
+      no_log: true
 
     - name: Fetch SSH public keys from GitHub ({{ github_user }})
       uri:

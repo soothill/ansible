@@ -80,6 +80,30 @@
       register: next_vmid
       changed_when: false
 
+    - name: Check that cloud-init template (VMID {{ template_vmid }}) exists
+      command: qm config {{ template_vmid }}
+      register: template_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail with helpful message if template VMID {{ template_vmid }} is missing
+      fail:
+        msg: |
+          Cloud-init template VMID {{ template_vmid }} was not found on node '{{ proxmox_node }}'.
+          Create it first – on the Proxmox host run:
+
+            wget https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+            qm create {{ template_vmid }} --name ubuntu-noble-template --memory 2048 --net0 virtio,bridge=vmbr0
+            qm importdisk {{ template_vmid }} noble-server-cloudimg-amd64.img {{ vm_storage }}
+            qm set {{ template_vmid }} --scsihw virtio-scsi-pci --scsi0 {{ vm_storage }}:vm-{{ template_vmid }}-disk-0
+            qm set {{ template_vmid }} --ide2 {{ vm_storage }}:cloudinit --boot c --bootdisk scsi0 --serial0 socket --vga serial0
+            qm set {{ template_vmid }} --agent enabled=1
+            qm template {{ template_vmid }}
+            rm noble-server-cloudimg-amd64.img
+
+          Then re-run this playbook, or pass a different template_vmid with -e template_vmid=<VMID>.
+      when: template_check.rc != 0
+
     - name: Clone Ubuntu cloud-init template (VMID {{ template_vmid }}) to new VM
       command: >
         qm clone {{ template_vmid }} {{ next_vmid.stdout | trim }}

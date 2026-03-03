@@ -193,8 +193,8 @@
     - name: Wait for VM to acquire a DHCP address
       command: qm guest cmd {{ next_vmid.stdout | trim }} network-get-interfaces
       register: vm_network_raw
-      retries: 60
-      delay: 10
+      retries: 30
+      delay: 5
       until: >-
         vm_network_raw.rc == 0 and
         (vm_network_raw.stdout | length) > 0 and
@@ -203,7 +203,6 @@
         | map(attribute='ip-addresses')
         | flatten
         | selectattr('ip-address-type', 'eq', 'ipv4')
-        | rejectattr('ip-address', 'match', '^169\.254\.')
         | list | length) > 0
       changed_when: false
       failed_when: false

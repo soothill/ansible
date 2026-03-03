@@ -100,6 +100,7 @@ ENVIRONMENT VARIABLES (all optional)
   VM_NETWORK_BRIDGE   Network bridge                 (default: vmbr0)
   GITHUB_USER         GitHub user for SSH keys       (default: soothill)
   DEPLOY_USER         Linux user to create on VM     (default: darren)
+  DEPLOY_USER_PASSWORD  Password for the deploy user (default: none – key auth only)
 
 NOTES
   If key-based (passwordless) SSH is configured for the Proxmox host the
@@ -189,9 +190,9 @@ prompt_var VM_STORAGE        "Proxmox storage pool"            "${VM_STORAGE:-lo
 prompt_var VM_NETWORK_BRIDGE "Network bridge"                  "${VM_NETWORK_BRIDGE:-vmbr0}"
 
 # --- Guest OS ---
-prompt_var GITHUB_USER          "GitHub user for SSH keys"            "${GITHUB_USER:-soothill}"
-prompt_var DEPLOY_USER          "Linux user to create on VM"          "${DEPLOY_USER:-darren}"
-prompt_var DEPLOY_USER_PASSWORD "Deploy user password (blank = none)" "${DEPLOY_USER_PASSWORD:-}" "secret"
+prompt_var GITHUB_USER          "GitHub user for SSH keys"              "${GITHUB_USER:-soothill}"
+prompt_var DEPLOY_USER          "Linux user to create on VM"            "${DEPLOY_USER:-darren}"
+prompt_var DEPLOY_USER_PASSWORD "Deploy user password (blank = none)"   "${DEPLOY_USER_PASSWORD:-}" "secret"
 
 # ---------------------------------------------------------------------------
 # Validate inputs
@@ -352,7 +353,6 @@ banner "Running Playbook"
 
 EXIT_CODE=$?
 [[ -n "${SECRETS_FILE:-}" ]] && rm -f "$SECRETS_FILE"
-
 
 echo
 if [[ $EXIT_CODE -eq 0 ]]; then

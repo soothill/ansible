@@ -10,8 +10,8 @@
 #
 # Prerequisites:
 #   - A Proxmox host accessible at proxmox.local with SSH configured
-#   - An Ubuntu cloud-init template already created on Proxmox (default VMID: 9000)
-#     See: https://pve.proxmox.com/wiki/Cloud-Init_Support
+#   - If no Ubuntu cloud-init template exists at the given VMID (default: 9000),
+#     the playbook will create one automatically from the Ubuntu Noble cloud image.
 #   - community.general collection installed:
 #       ansible-galaxy collection install community.general
 #
@@ -86,22 +86,55 @@
       changed_when: false
       failed_when: false
 
-    - name: Fail with helpful message if template VMID {{ template_vmid }} is missing
-      fail:
-        msg: |
-          Cloud-init template VMID {{ template_vmid }} was not found on node '{{ proxmox_node }}'.
-          Create it first – on the Proxmox host run:
+    - name: Auto-create template – download Ubuntu Noble cloud image
+      get_url:
+        url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+        dest: /tmp/noble-server-cloudimg-amd64.img
+        mode: "0644"
+      when: template_check.rc != 0
 
-            wget https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
-            qm create {{ template_vmid }} --name ubuntu-noble-template --memory 2048 --net0 virtio,bridge=vmbr0
-            qm importdisk {{ template_vmid }} noble-server-cloudimg-amd64.img {{ vm_storage }}
-            qm set {{ template_vmid }} --scsihw virtio-scsi-pci --scsi0 {{ vm_storage }}:vm-{{ template_vmid }}-disk-0
-            qm set {{ template_vmid }} --ide2 {{ vm_storage }}:cloudinit --boot c --bootdisk scsi0 --serial0 socket --vga serial0
-            qm set {{ template_vmid }} --agent enabled=1
-            qm template {{ template_vmid }}
-            rm noble-server-cloudimg-amd64.img
+    - name: Auto-create template – create base VM (VMID {{ template_vmid }})
+      command: >
+        qm create {{ template_vmid }}
+        --name ubuntu-noble-template
+        --memory 2048
+        --net0 virtio,bridge={{ vm_network_bridge }}
+        --scsihw virtio-scsi-pci
+      when: template_check.rc != 0
 
-          Then re-run this playbook, or pass a different template_vmid with -e template_vmid=<VMID>.
+    - name: Auto-create template – import disk into {{ vm_storage }}
+      command: >
+        qm importdisk {{ template_vmid }}
+        /tmp/noble-server-cloudimg-amd64.img
+        {{ vm_storage }}
+      when: template_check.rc != 0
+
+    - name: Auto-create template – read config to get imported disk identifier
+      command: qm config {{ template_vmid }}
+      register: template_config_after_import
+      changed_when: false
+      when: template_check.rc != 0
+
+    - name: Auto-create template – attach disk, cloud-init drive, boot order, and agent
+      command: >
+        qm set {{ template_vmid }}
+        --scsi0 {{ template_config_after_import.stdout | regex_search('unused0:\s*(\S+)', '\1') | first }}
+        --ide2 {{ vm_storage }}:cloudinit
+        --boot c
+        --bootdisk scsi0
+        --serial0 socket
+        --vga serial0
+        --agent enabled=1
+      when: template_check.rc != 0
+
+    - name: Auto-create template – convert VM to template
+      command: qm template {{ template_vmid }}
+      when: template_check.rc != 0
+
+    - name: Auto-create template – remove downloaded image
+      file:
+        path: /tmp/noble-server-cloudimg-amd64.img
+        state: absent
       when: template_check.rc != 0
 
     - name: Clone Ubuntu cloud-init template (VMID {{ template_vmid }}) to new VM

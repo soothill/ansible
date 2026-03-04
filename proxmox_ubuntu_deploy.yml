@@ -122,8 +122,7 @@
         --ide2 {{ vm_storage }}:cloudinit
         --boot c
         --bootdisk scsi0
-        --serial0 socket
-        --vga serial0
+        --vga std
         --agent enabled=1
       when: template_check.rc != 0
 
@@ -156,6 +155,7 @@
         --sshkeys /tmp/{{ new_hostname }}_sshkeys.pub
         --nameserver 8.8.8.8
         --searchdomain local
+        --vga std
         --agent enabled=1
 
     - name: Resize VM disk to {{ vm_disk_size }}
@@ -171,12 +171,25 @@
       retries: 30
       delay: 10
       until: agent_ping.rc == 0
+      failed_when: false
       changed_when: false
 
-    - name: Get VM IP address via QEMU guest agent
-      command: >
-        qm guest cmd {{ next_vmid.stdout | trim }} network-get-interfaces
+    - name: Wait for VM to receive a real DHCP IP (retry until non-APIPA address appears)
+      command: qm guest cmd {{ next_vmid.stdout | trim }} network-get-interfaces
       register: vm_network_raw
+      retries: 18
+      delay: 10
+      until: >-
+        (vm_network_raw.stdout | from_json)
+        | selectattr('name', 'ne', 'lo')
+        | map(attribute='ip-addresses')
+        | flatten
+        | selectattr('ip-address-type', 'eq', 'ipv4')
+        | map(attribute='ip-address')
+        | reject('match', '^169\\.254\\.')
+        | list
+        | length > 0
+      failed_when: false
       changed_when: false
 
     - name: Parse VM IP address
@@ -188,6 +201,7 @@
              | flatten
              | selectattr('ip-address-type', 'eq', 'ipv4')
              | map(attribute='ip-address')
+             | reject('match', '^169\\.254\\.')
              | first }}
 
     - name: Display new VM connection info
@@ -263,6 +277,7 @@
       apt:
         name:
           - openssh-server       # SSH daemon
+          - qemu-guest-agent     # Proxmox guest agent (enables IP reporting and graceful shutdown)
           - lldpd                # LLDP – link layer discovery
           - avahi-daemon         # Zeroconf / mDNS
           - avahi-utils          # avahi-browse and friends
@@ -277,6 +292,16 @@
           - apt-listchanges
         state: present
         update_cache: no
+
+    # -----------------------------------------------------------------------
+    # Core services – start immediately after install
+    # -----------------------------------------------------------------------
+    - name: Ensure qemu-guest-agent is enabled and started
+      systemd:
+        name: qemu-guest-agent
+        state: started
+        enabled: yes
+        daemon_reload: yes
 
     # -----------------------------------------------------------------------
     # SSH

@@ -270,6 +270,7 @@
         groups: newly_deployed
         ansible_host: "{{ vm_ip }}"
         ansible_user: "{{ deploy_user }}"
+        ansible_ssh_extra_args: "-o StrictHostKeyChecking=accept-new"
 
 # ---------------------------------------------------------------------------
 # Play 2: Configure the newly deployed Ubuntu VM

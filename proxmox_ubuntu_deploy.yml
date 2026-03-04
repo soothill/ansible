@@ -24,13 +24,13 @@
 #   new_hostname          - (REQUIRED) Name/hostname for the new Ubuntu VM
 #   proxmox_api_password  - (REQUIRED) Proxmox root password for API access
 #   proxmox_node          - Proxmox node name (default: proxmox)
-#   proxmox_api_user      - Proxmox API user (default: root@pam)
+#   proxmox_api_user      - Proxmox API user (default: root)
 #   template_vmid         - VMID of the Ubuntu cloud-init template (default: 9000)
 #   vm_cores              - Number of vCPU cores (default: 2)
 #   vm_memory             - RAM in MB (default: 2048)
 #   vm_disk_size          - Disk size to resize to (default: 20G)
-#   vm_storage            - Proxmox storage pool name (default: local-lvm)
-#   vm_network_bridge     - Proxmox network bridge (default: vmbr0)
+#   vm_storage            - Proxmox storage pool name (default: RaidZ)
+#   vm_network_bridge     - Proxmox network bridge (default: vmbr10g)
 #   github_user           - GitHub username to pull SSH keys from (default: soothill)
 #   deploy_user           - Linux user to create on the new VM (default: darren)
 #
@@ -46,13 +46,13 @@
   vars:
     new_hostname: "{{ new_hostname | mandatory('Pass -e new_hostname=<hostname>') }}"
     proxmox_node: "proxmox"
-    proxmox_api_user: "root@pam"
+    proxmox_api_user: "root"
     template_vmid: 9000
     vm_cores: 2
     vm_memory: 2048
     vm_disk_size: "20G"
-    vm_storage: "local-lvm"
-    vm_network_bridge: "vmbr0"
+    vm_storage: "RaidZ"
+    vm_network_bridge: "vmbr10g"
     github_user: "soothill"
     deploy_user: "darren"
 

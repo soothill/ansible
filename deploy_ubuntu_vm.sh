@@ -91,13 +91,13 @@ ENVIRONMENT VARIABLES (all optional)
   PROXMOX_HOST        Proxmox host address           (default: proxmox.local)
   PROXMOX_SSH_USER    SSH user for the Proxmox host  (default: root)
   PROXMOX_NODE        Proxmox node name              (default: proxmox)
-  PROXMOX_API_USER    Proxmox API user               (default: root@pam)
+  PROXMOX_API_USER    Proxmox API user               (default: root)
   TEMPLATE_VMID       Source cloud-init VMID         (default: 9000)
   VM_CORES            vCPU cores                     (default: 2)
   VM_MEMORY           RAM in MB                      (default: 2048)
   VM_DISK_SIZE        Disk size                      (default: 20G)
-  VM_STORAGE          Proxmox storage pool           (default: local-lvm)
-  VM_NETWORK_BRIDGE   Network bridge                 (default: vmbr0)
+  VM_STORAGE          Proxmox storage pool           (default: RaidZ)
+  VM_NETWORK_BRIDGE   Network bridge                 (default: vmbr10g)
   GITHUB_USER         GitHub user for SSH keys       (default: soothill)
   DEPLOY_USER         Linux user to create on VM     (default: darren)
 
@@ -178,15 +178,15 @@ echo
 prompt_var PROXMOX_HOST     "Proxmox host address"    "${PROXMOX_HOST:-proxmox.local}"
 prompt_var PROXMOX_SSH_USER "Proxmox SSH user"        "${PROXMOX_SSH_USER:-root}"
 prompt_var PROXMOX_NODE     "Proxmox node name"       "${PROXMOX_NODE:-proxmox}"
-prompt_var PROXMOX_API_USER "Proxmox API user"        "${PROXMOX_API_USER:-root@pam}"
+prompt_var PROXMOX_API_USER "Proxmox API user"        "${PROXMOX_API_USER:-root}"
 
 # --- Template & hardware ---
 prompt_var TEMPLATE_VMID     "Ubuntu cloud-init template VMID" "${TEMPLATE_VMID:-9000}"
 prompt_var VM_CORES          "vCPU cores"                      "${VM_CORES:-2}"
 prompt_var VM_MEMORY         "RAM (MB)"                        "${VM_MEMORY:-2048}"
 prompt_var VM_DISK_SIZE      "Disk size (e.g. 20G, 50G)"       "${VM_DISK_SIZE:-20G}"
-prompt_var VM_STORAGE        "Proxmox storage pool"            "${VM_STORAGE:-local-lvm}"
-prompt_var VM_NETWORK_BRIDGE "Network bridge"                  "${VM_NETWORK_BRIDGE:-vmbr0}"
+prompt_var VM_STORAGE        "Proxmox storage pool"            "${VM_STORAGE:-RaidZ}"
+prompt_var VM_NETWORK_BRIDGE "Network bridge"                  "${VM_NETWORK_BRIDGE:-vmbr10g}"
 
 # --- Guest OS ---
 prompt_var GITHUB_USER  "GitHub user for SSH keys"    "${GITHUB_USER:-soothill}"

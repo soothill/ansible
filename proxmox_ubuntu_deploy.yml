@@ -123,8 +123,7 @@
         --ide2 {{ vm_storage }}:cloudinit
         --boot c
         --bootdisk scsi0
-        --serial0 socket
-        --vga serial0
+        --vga std
         --agent enabled=1
       when: template_check.rc != 0
 
@@ -157,6 +156,7 @@
         --sshkeys /tmp/{{ new_hostname }}_sshkeys.pub
         --nameserver 8.8.8.8
         --searchdomain local
+        --vga std
         --agent enabled=1
 
     - name: Set cloud-init password for {{ deploy_user }}
@@ -188,6 +188,7 @@
       retries: 30
       delay: 10
       until: agent_ping.rc == 0
+      failed_when: false
       changed_when: false
 
     - name: Wait for VM to acquire a DHCP address
@@ -217,6 +218,7 @@
              | selectattr('ip-address-type', 'eq', 'ipv4')
              | rejectattr('ip-address', 'match', '^169\.254\.')
              | map(attribute='ip-address')
+             | reject('match', '^169\\.254\\.')
              | first }}
 
     - name: Display new VM connection info
@@ -293,6 +295,7 @@
       apt:
         name:
           - openssh-server       # SSH daemon
+          - qemu-guest-agent     # Proxmox guest agent (enables IP reporting and graceful shutdown)
           - lldpd                # LLDP – link layer discovery
           - avahi-daemon         # Zeroconf / mDNS
           - avahi-utils          # avahi-browse and friends
@@ -307,6 +310,16 @@
           - apt-listchanges
         state: present
         update_cache: no
+
+    # -----------------------------------------------------------------------
+    # Core services – start immediately after install
+    # -----------------------------------------------------------------------
+    - name: Ensure qemu-guest-agent is enabled and started
+      systemd:
+        name: qemu-guest-agent
+        state: started
+        enabled: yes
+        daemon_reload: yes
 
     # -----------------------------------------------------------------------
     # SSH

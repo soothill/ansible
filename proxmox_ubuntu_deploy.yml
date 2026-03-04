@@ -174,10 +174,34 @@
       command: >
         qm resize {{ next_vmid.stdout | trim }} scsi0 {{ vm_disk_size }}
 
-    - name: Regenerate cloud-init ISO before boot
+    # Inject a vendor-data snippet so cloud-init installs qemu-guest-agent
+    # during first boot.  This must happen before the VM starts so that the
+    # guest-agent wait below actually succeeds.
+    - name: Ensure Proxmox snippets directory exists
+      file:
+        path: /var/lib/vz/snippets
+        state: directory
+        mode: "0755"
+
+    - name: Write cloud-init vendor-data snippet (installs qemu-guest-agent on first boot)
+      copy:
+        dest: "/var/lib/vz/snippets/{{ new_hostname }}-vendor.yaml"
+        mode: "0644"
+        content: |
+          #cloud-config
+          packages:
+            - qemu-guest-agent
+          runcmd:
+            - [ systemctl, enable, --now, qemu-guest-agent ]
+
+    - name: Apply vendor-data snippet to VM via cicustom
+      command: >
+        qm set {{ next_vmid.stdout | trim }}
+        --cicustom "vendor=local:snippets/{{ new_hostname }}-vendor.yaml"
+
+    - name: Regenerate cloud-init ISO to include vendor-data
       command: qm cloudinit update {{ next_vmid.stdout | trim }}
       changed_when: true
-      failed_when: false
 
     - name: Start the new VM
       command: qm start {{ next_vmid.stdout | trim }}
@@ -233,6 +257,11 @@
     - name: Remove temporary SSH keys file from Proxmox host
       file:
         path: "/tmp/{{ new_hostname }}_sshkeys.pub"
+        state: absent
+
+    - name: Remove cloud-init vendor-data snippet
+      file:
+        path: "/var/lib/vz/snippets/{{ new_hostname }}-vendor.yaml"
         state: absent
 
     - name: Add new VM to in-memory inventory for configuration play
